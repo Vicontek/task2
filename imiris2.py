@@ -1,12 +1,33 @@
+
 # coding: utf-8
 
-# In[1018]:
+# In[1561]:
 
 import simpy as smp
-from random import expovariate, random, randint
+from random import expovariate, random, randint, seed
 
 
-# In[1019]:
+# In[1562]:
+
+CUSTOMER_DSTRB = [[0.5, 1], [0.3, 2], [0.1, 3], [0.1, 4]]
+WAY_DSTRB = [[0.8, "hot"], [0.15, "cold"], [0.05, "drinks"]]
+HOT_TIME  = [50, 120]
+COLD_TIME = [30, 90]
+HOT_WORKERS = 1
+COLD_WORKERS = 1
+CASHBOX_NUMBER = 2
+MEAN_GAP = 30
+CUSTOMER_NUMBER = 0
+STUDETNTS = []
+seed(42)
+# seed_arrive = 11
+# seed_groups = 17
+# seed_way = 29
+# seed_station_time = {"hot":31, "cold":43, "drinks":51}
+# seed_cash_time    = {"hot":59, "cold":79, "drinks":91}
+
+
+# In[1563]:
 
 def print_time(s, sec):
     mins = str(int(sec // 60))
@@ -18,7 +39,7 @@ def print_time(s, sec):
     print(s, mins + ":" + secs)
 
 
-# In[1020]:
+# In[1564]:
 
 def discrete_rv(drv):
     if sum([val[0] for val in drv]) != 1:
@@ -31,17 +52,7 @@ def discrete_rv(drv):
         s += pair[0]
 
 
-# In[1021]:
-
-CUSTOMER_DSTRB = [[0.5, 1], [0.3, 2], [0.1, 3], [0.1, 4]]
-WAY_DSTRB = [[0.8, "hot"], [0.15, "cold"], [0.05, "drinks"]]
-CASHBOX_NUMBER = 2
-MEAN_GAP = 30
-CUSTOMER_NUMBER = 0
-STUDETNTS = []
-
-
-# In[1022]:
+# In[1565]:
 
 def gen_group(env, canteen):
     global CUSTOMER_NUMBER, STUDETNTS
@@ -56,7 +67,7 @@ def gen_group(env, canteen):
             CUSTOMER_NUMBER += 1
 
 
-# In[1023]:
+# In[1566]:
 
 class Student:
     def __init__(self, env, canteen, index):
@@ -72,6 +83,8 @@ class Student:
     def start(self):
         self.service_time = self.env.now
         self.way = discrete_rv(WAY_DSTRB)
+        if self.way != "hot":
+            print("LOLEL")
         print("Студент {0} направился к {1}".format(self.index, self.way))
         if self.way != "drinks":
             with self.canteen.stations[self.way][0].request() as req:
@@ -112,31 +125,35 @@ class Student:
         print_time("Студент {0} обслуживался".format(self.index), self.service_time)
 
 
-# In[1024]:
+# In[1567]:
 
 class Canteen:
     def __init__(self, env):
         self.env = env
-        self.hot = smp.Resource(self.env, capacity=1)
-        self.cold = smp.Resource(self.env, capacity=1)
+        self.hot = smp.Resource(self.env, capacity=HOT_WORKERS)
+        self.cold = smp.Resource(self.env, capacity=COLD_WORKERS)
         self.cashboxes = [[i, smp.Resource(self.env, capacity=1), 0] for i in range(CASHBOX_NUMBER)]
         self.stations = {"hot":[self.hot, self.hot_station, 0], "cold":[self.cold, self.cold_station, 0]}
     
     def hot_station(self, student):
-        time = randint(50, 120)
+        time = randint(HOT_TIME[0], HOT_TIME[1])
         student.cashbox_time += randint(20, 40)
+        
         print("hot time:", time)
         yield student.env.timeout(time)
     
     def cold_station(self, student):
-        time = randint(60, 180)
+        time = randint(COLD_TIME[0], COLD_TIME[1])
+
         student.cashbox_time += randint(5, 15)
+        
         print("{0} student's cold time:".format(student.index), time)
         yield student.env.timeout(time)
     
     def drinks_station(self, student):
         time = randint(5, 20)
         student.cashbox_time += randint(5, 10)
+        
         print("drinks time:", time)
         yield student.env.timeout(time) 
     
@@ -180,12 +197,7 @@ class Canteen:
         
 
 
-# In[ ]:
-
-
-
-
-# In[1025]:
+# In[1568]:
 
 env = smp.Environment()
 cnt = Canteen(env)
@@ -193,23 +205,23 @@ env.process(gen_group(env, cnt))
 env.run(until=90*60)
 
 
-# In[1026]:
+# In[1569]:
 
 mn_hot = sum([std.delays["hot"] for std in STUDETNTS if (std.way == "hot" and std.finished)]) / len([std for std in STUDETNTS if (std.way == "hot" and std.finished)])
 print_time("Mean hot delay:", mn_hot)
-mx_hot = max([std.delays["hot"] for std in STUDETNTS if std.way == "hot"])
+mx_hot = max([std.delays["hot"] for std in STUDETNTS if (std.way == "hot" and std.finished)])
 print_time("Max  hot delay", mx_hot)
 
 
-# In[1027]:
+# In[1570]:
 
 mn_cold = sum([std.delays["cold"] for std in STUDETNTS if (std.way == "cold" and std.finished)]) / len([std for std in STUDETNTS if (std.way == "cold" and std.finished)])
 print_time("Mean cold delay:", mn_cold)
-mx_cold = max([std.delays["cold"] for std in STUDETNTS if std.way == "cold"])
+mx_cold = max([std.delays["cold"] for std in STUDETNTS if std.way == "cold" and std.finished])
 print_time("Max  cold delay:", mx_cold)
 
 
-# In[1028]:
+# In[1571]:
 
 mn_cash = sum([std.delays["cash"] for std in STUDETNTS if std.finished]) / len([std for std in STUDETNTS if std.finished])
 mx_cash = max([std.delays["cash"] for std in STUDETNTS if std.finished])
@@ -218,25 +230,25 @@ print_time("Max  cash delay:", mx_cash)
 max([std.delays["cash"] for std in STUDETNTS if std.finished])
 
 
-# In[1029]:
+# In[1572]:
 
 print("Mean hot_station queue:", int(cnt.mean_hot_queue))
 print("Max  hot_station queue:", cnt.max_hot_queue)
 
 
-# In[1030]:
+# In[1573]:
 
 print("Mean cold_station queue:", int(cnt.mean_cold_queue))
 print("Max  cold_station queue:", cnt.max_cold_queue)
 
 
-# In[1031]:
+# In[1574]:
 
 print("Mean cashbox queue:", int(cnt.mean_cash_queue))
 print("Max  cashbox queue:", cnt.max_cash_queue)
 
 
-# In[1032]:
+# In[1575]:
 
 type1 = [std for std in STUDETNTS if (std.way == "hot" and std.finished)]
 type2 = [std for std in STUDETNTS if (std.way == "cold" and std.finished)]
@@ -249,17 +261,17 @@ for i in range(len(types)):
     print()
 
 
-# In[ ]:
+# In[1576]:
+
+print("Mean total students:", int(cnt.mean_all))
 
 
+# In[1577]:
+
+print("Max total students:", int(cnt.max_all))
 
 
-# In[ ]:
-
-
-
-
-# In[1033]:
+# In[1578]:
 
 mn_total = sum([sum(std.delays.values()) for std in STUDETNTS if std.finished]) / len([std for std in STUDETNTS if std.finished])
 print_time("Mean total service time:", mn_total)
